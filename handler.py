@@ -7,6 +7,9 @@ from .debug import log_action
 from .events import EventCollector
 from .orchestrator_bridge import render_components
 
+# Session key for next-request message queue
+_NEXT_KEY = "_mr_next_messages"
+
 
 class HtmxHandler:
     """
@@ -14,7 +17,8 @@ class HtmxHandler:
 
     Provides:
         - Session read/write
-        - Event emission (toast, alert, dom.update, redirect, custom)
+        - Event emission (toast, alert, confirm, choice, dom.update, redirect)
+        - Next-request message queue (survives redirects)
         - Optional orchestrator bridge for component rendering
     """
 
@@ -46,17 +50,75 @@ class HtmxHandler:
         """Emit any event. Primary API."""
         self._collector.emit(event_type, data)
 
-    # ── Event shortcuts ────────────────────────────────────
+    # ── Messages ───────────────────────────────────────────
+    #
+    # toast / alert / confirm / choice — unified message pipeline.
+    # All messages go through the same event system.
+    # Use `next=True` to queue messages for after a redirect.
+    #
 
-    def toast(self, message, level="info"):
-        self.emit("toast", {"message": message, "level": level})
+    def toast(self, message, level="info", duration=3000, next=False):
+        event = {"message": message, "level": level, "duration": duration}
+        if next:
+            self._queue_next("toast", event)
+        else:
+            self.emit("toast", event)
 
-    def alert(self, message, level="info", dismissible=True):
-        self.emit("alert", {
+    def alert(self, message, level="info", dismissible=True, next=False):
+        event = {"message": message, "level": level, "dismissible": dismissible}
+        if next:
+            self._queue_next("alert", event)
+        else:
+            self.emit("alert", event)
+
+    def confirm(self, message, on_confirm, payload=None, on_cancel=None,
+                title=None, confirm_label="Confirm", cancel_label="Cancel",
+                style="default"):
+        """
+        Show a confirm dialog. When user confirms, fires `on_confirm`
+        as an HTMX POST with the given payload.
+
+        Args:
+            message:       Dialog message text
+            on_confirm:    URL to POST when confirmed
+            payload:       dict of data to send with the confirm POST
+            on_cancel:     URL to POST when cancelled (optional)
+            title:         Optional dialog title
+            confirm_label: Text for confirm button (default "Confirm")
+            cancel_label:  Text for cancel button (default "Cancel")
+            style:         "default" or "danger" — affects confirm button color
+        """
+        self.emit("confirm", {
             "message": message,
-            "level": level,
-            "dismissible": dismissible,
+            "title": title,
+            "on_confirm": on_confirm,
+            "on_cancel": on_cancel,
+            "payload": payload or {},
+            "confirm_label": confirm_label,
+            "cancel_label": cancel_label,
+            "style": style,
         })
+
+    def choice(self, message, options, title=None):
+        """
+        Show a choice dialog with multiple action buttons.
+
+        Args:
+            message: Dialog message text
+            title:   Optional dialog title
+            options: List of dicts, each with:
+                     - label: Button text
+                     - url:   URL to POST when selected
+                     - payload: dict (optional)
+                     - style: "default" | "danger" | "secondary" (optional)
+        """
+        self.emit("choice", {
+            "message": message,
+            "title": title,
+            "options": options,
+        })
+
+    # ── DOM ─────────────────────────────────────────────────
 
     def dom_update(self, target, html, swap="outerHTML"):
         self.emit("dom.update", {
@@ -70,6 +132,17 @@ class HtmxHandler:
 
     def redirect(self, url):
         self.emit("redirect", {"url": url})
+
+    # ── Next-request queue ──────────────────────────────────
+
+    def _queue_next(self, event_type, data):
+        """Store a message in session to be delivered on the next page load."""
+        queue = self.request.session.get(_NEXT_KEY, [])
+        event = {"type": event_type}
+        event.update(data)
+        queue.append(event)
+        self.request.session[_NEXT_KEY] = queue
+        self.request.session.modified = True
 
     # ── Orchestrator bridge (optional) ─────────────────────
 
@@ -93,6 +166,19 @@ class HtmxHandler:
 
     def _build_response(self):
         return JsonResponse({"events": self._collector.events})
+
+
+def drain_next_messages(request):
+    """
+    Pop queued next-request messages from session.
+    Call this in template tags or views to get messages stored by
+    h.toast("...", next=True) or h.alert("...", next=True).
+    Returns a list of event dicts.
+    """
+    messages = request.session.pop(_NEXT_KEY, [])
+    if messages:
+        request.session.modified = True
+    return messages
 
 
 # ── Decorator ───────────────────────────────────────────────

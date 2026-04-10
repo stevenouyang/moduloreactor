@@ -3,10 +3,11 @@
  *
  * Responsibilities:
  *  1. Intercept HTMX JSON responses and dispatch events
- *  2. Provide built-in handlers: dom.update, toast, alert, redirect, dom.remove
- *  3. Allow custom event handlers via FrontBoil.on()
- *  4. Attach X-Component-Hashes header to requests (orchestrator compat)
- *  5. Debug logging (toggleable)
+ *  2. Built-in handlers: dom.update, toast, alert, confirm, choice, redirect, dom.remove
+ *  3. Custom event handlers via FrontBoil.on()
+ *  4. Next-request message queue (rendered on page load)
+ *  5. CSRF token auto-injection
+ *  6. Debug logging (toggleable)
  */
 (function () {
     "use strict";
@@ -24,6 +25,7 @@
             this.hashes = options.hashes || {};
             this._bindHtmx();
             this._registerDefaults();
+            this._processNextMessages(options.nextMessages || []);
             this._log("init", options);
         },
 
@@ -50,6 +52,10 @@
             var self = this;
 
             document.body.addEventListener("htmx:configRequest", function (evt) {
+                var csrfToken = self._getCookie("csrftoken");
+                if (csrfToken) {
+                    evt.detail.headers["X-CSRFToken"] = csrfToken;
+                }
                 if (Object.keys(self.hashes).length) {
                     evt.detail.headers["X-Component-Hashes"] = JSON.stringify(self.hashes);
                 }
@@ -61,7 +67,6 @@
                 var ct = xhr.getResponseHeader("Content-Type") || "";
                 if (ct.indexOf("application/json") === -1) return;
 
-                // JSON response — prevent htmx swap, we handle it
                 evt.detail.shouldSwap = false;
 
                 try {
@@ -85,11 +90,18 @@
             }
         },
 
+        _processNextMessages: function (messages) {
+            if (!messages || !messages.length) return;
+            this._log("next-messages", messages);
+            this._processEvents(messages);
+        },
+
         // ── Built-in Event Handlers ──────────────────────────
 
         _registerDefaults: function () {
+            var self = this;
 
-            // dom.update — swap HTML into a target
+            // ── dom.update ──
             this.on("dom.update", function (e) {
                 var target = document.querySelector(e.target);
                 if (!target) return;
@@ -108,33 +120,18 @@
                 }
             });
 
-            // dom.remove
+            // ── dom.remove ──
             this.on("dom.remove", function (e) {
                 var target = document.querySelector(e.target);
                 if (target) target.remove();
             });
 
-            // toast
+            // ── toast ──
             this.on("toast", function (e) {
-                var container = document.getElementById("frontboil-toasts");
-                if (!container) {
-                    container = document.createElement("div");
-                    container.id = "frontboil-toasts";
-                    container.style.cssText =
-                        "position:fixed;top:1rem;right:1rem;z-index:9999;" +
-                        "display:flex;flex-direction:column;gap:0.5rem;pointer-events:none;";
-                    document.body.appendChild(container);
-                }
+                var container = self._ensureEl("mr-toasts");
                 var toast = document.createElement("div");
                 var level = e.level || "info";
-                var bg =
-                    level === "success" ? "#16a34a" :
-                    level === "error"   ? "#dc2626" :
-                    level === "warning" ? "#d97706" : "#2563eb";
-                toast.style.cssText =
-                    "padding:0.75rem 1.25rem;border-radius:0.5rem;color:#fff;" +
-                    "font-size:0.875rem;pointer-events:auto;cursor:pointer;" +
-                    "box-shadow:0 4px 12px rgba(0,0,0,.15);background:" + bg + ";";
+                toast.className = "mr-toast mr-toast--" + level;
                 toast.textContent = e.message;
                 toast.onclick = function () { toast.remove(); };
                 container.appendChild(toast);
@@ -142,50 +139,179 @@
                 setTimeout(function () { if (toast.parentNode) toast.remove(); }, dur);
             });
 
-            // alert
+            // ── alert ──
             this.on("alert", function (e) {
-                var container = document.getElementById("frontboil-alerts");
-                if (!container) {
-                    container = document.createElement("div");
-                    container.id = "frontboil-alerts";
-                    container.style.cssText =
-                        "position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);" +
-                        "z-index:9998;display:flex;flex-direction:column;gap:0.5rem;" +
-                        "max-width:600px;width:calc(100% - 2rem);";
-                    document.body.appendChild(container);
-                }
+                var container = self._ensureEl("mr-alerts");
                 var level = e.level || "info";
-                var colors = {
-                    success: { bg: "#f0fdf4", border: "#16a34a", text: "#166534" },
-                    error:   { bg: "#fef2f2", border: "#dc2626", text: "#991b1b" },
-                    warning: { bg: "#fffbeb", border: "#d97706", text: "#92400e" },
-                    info:    { bg: "#eff6ff", border: "#2563eb", text: "#1e40af" },
-                };
-                var c = colors[level] || colors.info;
                 var el = document.createElement("div");
-                el.style.cssText =
-                    "padding:0.75rem 1rem;border-radius:0.5rem;border:1px solid " + c.border +
-                    ";background:" + c.bg + ";color:" + c.text + ";font-size:0.875rem;";
-                el.textContent = e.message;
+                el.className = "mr-alert mr-alert--" + level;
                 if (e.dismissible !== false) {
-                    el.style.cursor = "pointer";
+                    el.className += " mr-alert--dismissible";
                     el.onclick = function () { el.remove(); };
                 }
+                el.textContent = e.message;
                 container.appendChild(el);
             });
 
-            // redirect
+            // ── confirm ──
+            this.on("confirm", function (e) {
+                self._showModal({
+                    title: e.title,
+                    message: e.message,
+                    actions: [
+                        {
+                            label: e.cancel_label || "Cancel",
+                            style: "secondary",
+                            action: function () {
+                                self._closeModal();
+                                if (e.on_cancel) {
+                                    self._postAction(e.on_cancel, e.payload || {});
+                                }
+                            }
+                        },
+                        {
+                            label: e.confirm_label || "Confirm",
+                            style: e.style || "default",
+                            action: function () {
+                                self._closeModal();
+                                self._postAction(e.on_confirm, e.payload || {});
+                            }
+                        }
+                    ]
+                });
+            });
+
+            // ── choice ──
+            this.on("choice", function (e) {
+                var actions = [];
+                actions.push({
+                    label: "Cancel",
+                    style: "secondary",
+                    action: function () { self._closeModal(); }
+                });
+                var opts = e.options || [];
+                for (var i = 0; i < opts.length; i++) {
+                    (function (opt) {
+                        actions.push({
+                            label: opt.label,
+                            style: opt.style || "default",
+                            action: function () {
+                                self._closeModal();
+                                self._postAction(opt.url, opt.payload || {});
+                            }
+                        });
+                    })(opts[i]);
+                }
+                self._showModal({
+                    title: e.title,
+                    message: e.message,
+                    actions: actions
+                });
+            });
+
+            // ── redirect ──
             this.on("redirect", function (e) {
                 if (e.url) window.location.href = e.url;
             });
 
-            // console (debug helper)
+            // ── console ──
             this.on("console", function (e) {
                 console.log("[FrontBoil:server]", e.message || e);
             });
         },
 
-        // ── Debug ─────────────────────────────────────────────
+        // ── Modal ────────────────────────────────────────────
+
+        _showModal: function (opts) {
+            var self = this;
+            var overlay = this._ensureEl("mr-modal-overlay");
+            overlay.innerHTML = "";
+
+            var modal = document.createElement("div");
+            modal.className = "mr-modal";
+
+            if (opts.title) {
+                var title = document.createElement("div");
+                title.className = "mr-modal__title";
+                title.textContent = opts.title;
+                modal.appendChild(title);
+            }
+
+            var msg = document.createElement("div");
+            msg.className = "mr-modal__message";
+            msg.textContent = opts.message;
+            modal.appendChild(msg);
+
+            var actions = document.createElement("div");
+            actions.className = "mr-modal__actions";
+            for (var i = 0; i < opts.actions.length; i++) {
+                (function (a) {
+                    var btn = document.createElement("button");
+                    btn.className = "mr-btn mr-btn--" + (a.style || "default");
+                    btn.textContent = a.label;
+                    btn.onclick = a.action;
+                    actions.appendChild(btn);
+                })(opts.actions[i]);
+            }
+            modal.appendChild(actions);
+            overlay.appendChild(modal);
+            overlay.classList.add("mr-active");
+
+            // Close on overlay click (outside modal)
+            overlay.onclick = function (evt) {
+                if (evt.target === overlay) self._closeModal();
+            };
+        },
+
+        _closeModal: function () {
+            var overlay = document.getElementById("mr-modal-overlay");
+            if (overlay) overlay.classList.remove("mr-active");
+        },
+
+        // ── Utilities ────────────────────────────────────────
+
+        _ensureEl: function (id) {
+            var el = document.getElementById(id);
+            if (!el) {
+                el = document.createElement("div");
+                el.id = id;
+                document.body.appendChild(el);
+            }
+            return el;
+        },
+
+        _postAction: function (url, payload) {
+            // Fire an HTMX-style POST via fetch, then process response events
+            var self = this;
+            var csrfToken = this._getCookie("csrftoken");
+            var body = new FormData();
+            if (payload) {
+                for (var key in payload) {
+                    if (payload.hasOwnProperty(key)) {
+                        body.append(key, payload[key]);
+                    }
+                }
+            }
+            fetch(url, {
+                method: "POST",
+                headers: csrfToken ? { "X-CSRFToken": csrfToken } : {},
+                body: body
+            })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                if (data.events && data.events.length) {
+                    self._processEvents(data.events);
+                }
+            })
+            .catch(function (err) {
+                self._log("error", "postAction failed: " + err.message);
+            });
+        },
+
+        _getCookie: function (name) {
+            var match = document.cookie.match(new RegExp("(^|;\\s*)" + name + "=([^;]*)"));
+            return match ? decodeURIComponent(match[2]) : null;
+        },
 
         _log: function (ctx, data) {
             if (this.debug) {
