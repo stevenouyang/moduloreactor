@@ -1,0 +1,23 @@
+[project]
+name = "moduloreactor"
+version = "0.1.0"
+description = "Event-driven HTMX integration for Django"
+requires-python = ">=3.10"
+dependencies = [
+    "django>=4.2",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["moduloreactor*"]
+
+[tool.setuptools.package-data]
+moduloreactor = [
+    "static/moduloreactor/*.js",
+    "templates/moduloreactor/*.html",
+    "docs/*.md",
+    "README.md",
+]

@@ -1,0 +1,113 @@
+{% load moduloreactor %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ModuloReactor — Test Page</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #1f2937; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+        h1 span { font-size: 0.875rem; color: #9ca3af; font-weight: normal; }
+        .subtitle { color: #6b7280; margin-bottom: 2rem; font-size: 0.875rem; }
+        .card { border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1.25rem; margin-bottom: 1rem; }
+        .card h2 { font-size: 1rem; margin-bottom: 0.75rem; color: #374151; }
+        .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+        button {
+            padding: 0.4rem 0.85rem; border: 1px solid #d1d5db; border-radius: 0.375rem;
+            cursor: pointer; background: #fff; font-size: 0.875rem; color: #374151;
+        }
+        button:hover { background: #f9fafb; }
+        input[type="text"], select {
+            padding: 0.4rem 0.6rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 0.875rem;
+        }
+        ul { list-style: disc; padding-left: 1.25rem; margin-bottom: 0.75rem; }
+        li { padding: 0.15rem 0; font-size: 0.875rem; }
+        .big-num { font-size: 2rem; font-weight: 700; min-width: 3rem; text-align: center; }
+        hr { border: none; border-top: 1px solid #e5e7eb; margin: 0.75rem 0; }
+    </style>
+</head>
+<body>
+    <h1>ModuloReactor <span>test page</span></h1>
+    <p class="subtitle">Internal playground for <code>moduloreactor</code></p>
+
+    <!-- ── Counter ────────────────────────────────────────── -->
+    <div class="card">
+        <h2>Counter</h2>
+        <div class="row">
+            <form hx-post="{% url 'moduloreactor:test_counter' %}" hx-swap="none">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="decrement">
+                <button type="submit">−</button>
+            </form>
+            <span id="counter-value" class="big-num">{{ counter }}</span>
+            <form hx-post="{% url 'moduloreactor:test_counter' %}" hx-swap="none">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="increment">
+                <button type="submit">+</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── Item List ──────────────────────────────────────── -->
+    <div class="card">
+        <h2>Item List</h2>
+        <ul id="item-list">
+            {% for item in items %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+        <form hx-post="{% url 'moduloreactor:test_add_item' %}" hx-swap="none" class="row">
+            {% csrf_token %}
+            <input type="text" name="item_name" placeholder="New item…">
+            <button type="submit">Add</button>
+        </form>
+    </div>
+
+    <!-- ── Status ─────────────────────────────────────────── -->
+    <div class="card">
+        <h2>Status</h2>
+        <p style="margin-bottom:0.5rem;">
+            Current: <span id="status-indicator" style="font-weight:bold">{{ status|upper }}</span>
+        </p>
+        <form hx-post="{% url 'moduloreactor:test_set_status' %}" hx-swap="none" class="row">
+            {% csrf_token %}
+            <select name="status">
+                <option value="online"{% if status == "online" %} selected{% endif %}>Online</option>
+                <option value="away"{% if status == "away" %} selected{% endif %}>Away</option>
+                <option value="busy"{% if status == "busy" %} selected{% endif %}>Busy</option>
+            </select>
+            <button type="submit">Set</button>
+        </form>
+    </div>
+
+    <!-- ── Notifications ──────────────────────────────────── -->
+    <div class="card">
+        <h2>Toast</h2>
+        <form hx-post="{% url 'moduloreactor:test_toast' %}" hx-swap="none" class="row">
+            {% csrf_token %}
+            <input type="text" name="message" value="Hello!" placeholder="Message…">
+            <select name="level">
+                <option value="info">info</option>
+                <option value="success">success</option>
+                <option value="warning">warning</option>
+                <option value="error">error</option>
+            </select>
+            <button type="submit">Send Toast</button>
+        </form>
+        <hr>
+        <h2>Alert</h2>
+        <form hx-post="{% url 'moduloreactor:test_alert' %}" hx-swap="none" class="row">
+            {% csrf_token %}
+            <input type="text" name="message" value="Watch out!" placeholder="Message…">
+            <select name="level">
+                <option value="info">info</option>
+                <option value="success">success</option>
+                <option value="warning">warning</option>
+                <option value="error">error</option>
+            </select>
+            <button type="submit">Send Alert</button>
+        </form>
+    </div>
+
+    {% frontboil %}
+</body>
+</html>

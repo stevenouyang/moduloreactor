@@ -1,0 +1,8 @@
+MANIFEST.in
+README.md
+pyproject.toml
+moduloreactor.egg-info/PKG-INFO
+moduloreactor.egg-info/SOURCES.txt
+moduloreactor.egg-info/dependency_links.txt
+moduloreactor.egg-info/requires.txt
+moduloreactor.egg-info/top_level.txt
