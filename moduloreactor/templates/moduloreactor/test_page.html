@@ -1,0 +1,229 @@
+{% load moduloreactor %}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ModuloReactor — Playground</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-full">
+
+    <!-- ── Header ─────────────────────────────────────────── -->
+    <header class="bg-white border-b border-gray-200">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+            <div>
+                <h1 class="text-lg font-semibold text-gray-900 tracking-tight">ModuloReactor</h1>
+                <p class="text-xs text-gray-400">Event-driven HTMX playground</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-xs bg-indigo-50 text-indigo-700 font-medium px-2 py-0.5 rounded">v0.2.0</span>
+                <form hx-post="{% url 'moduloreactor:action_reset' %}" hx-swap="none">
+                    {% csrf_token %}
+                    <button type="submit" class="text-xs text-gray-500 hover:text-red-600 transition font-medium">Reset all</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+
+        <!-- ── Grid: Counter + Profile ───────────────────── -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+            <!-- Counter -->
+            <section class="bg-white rounded-xl border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Counter</h2>
+                    <span class="text-xs text-gray-400">Session state</span>
+                </div>
+                <div class="flex items-center justify-center gap-4 py-4">
+                    <form hx-post="{% url 'moduloreactor:action_counter' %}" hx-swap="none">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="decrement">
+                        <button type="submit" class="h-10 w-10 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 text-lg font-medium transition flex items-center justify-center">−</button>
+                    </form>
+                    <span id="counter-value" class="text-4xl font-bold tabular-nums text-gray-900">{{ counter }}</span>
+                    <form hx-post="{% url 'moduloreactor:action_counter' %}" hx-swap="none">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="increment">
+                        <button type="submit" class="h-10 w-10 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-600 text-lg font-medium transition flex items-center justify-center">+</button>
+                    </form>
+                </div>
+                <div class="text-center">
+                    <form hx-post="{% url 'moduloreactor:action_counter' %}" hx-swap="none" class="inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="reset">
+                        <button type="submit" class="text-xs text-gray-400 hover:text-gray-600 transition">Reset to 0</button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Profile Card -->
+            <section class="bg-white rounded-xl border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Profile</h2>
+                    <span class="text-xs text-gray-400">Inline edit</span>
+                </div>
+                <div id="profile-card">
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-lg">{{ profile.name.0 }}</div>
+                        <div>
+                            <p class="font-semibold text-gray-900">{{ profile.name }}</p>
+                            <p class="text-sm text-gray-500">{{ profile.email }}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-xs font-medium bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">{{ profile.role }}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-4">{{ profile.bio }}</p>
+                    <button hx-post="{% url 'moduloreactor:action_profile_edit' %}" hx-swap="none"
+                        class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">Edit profile</button>
+                </div>
+            </section>
+        </div>
+
+        <!-- ── Todo List ─────────────────────────────────── -->
+        <section class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Todo List</h2>
+                    <span id="todo-count" class="text-xs text-gray-500">{{ todo_count }} items left</span>
+                </div>
+                <form hx-post="{% url 'moduloreactor:action_todo_clear' %}" hx-swap="none">
+                    {% csrf_token %}
+                    <button type="submit" class="text-xs text-gray-400 hover:text-gray-600 transition">Clear completed</button>
+                </form>
+            </div>
+            <ul id="todo-list" class="divide-y divide-gray-100">
+                {% for todo in todos %}
+                <li id="todo-{{ todo.id }}" class="flex items-center gap-3 py-2 px-1 group border-b border-gray-100 last:border-0">
+                    <form hx-post="{% url 'moduloreactor:action_todo_toggle' %}" hx-swap="none" class="contents">
+                        {% csrf_token %}
+                        <input type="hidden" name="todo_id" value="{{ todo.id }}">
+                        <input type="checkbox" {% if todo.done %}checked{% endif %} onchange="this.form.requestSubmit()"
+                            class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer">
+                    </form>
+                    <span class="{% if todo.done %}line-through text-gray-400{% else %}text-gray-700{% endif %} flex-1 text-sm">{{ todo.text }}</span>
+                    <form hx-post="{% url 'moduloreactor:action_todo_delete' %}" hx-swap="none" class="contents">
+                        {% csrf_token %}
+                        <input type="hidden" name="todo_id" value="{{ todo.id }}">
+                        <button type="submit" class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition text-xs">✕</button>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            <form hx-post="{% url 'moduloreactor:action_todo_add' %}" hx-swap="none" class="flex gap-2 mt-4">
+                {% csrf_token %}
+                <input type="text" name="text" placeholder="Add a task…"
+                    class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                <button type="submit" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium">Add</button>
+            </form>
+        </section>
+
+        <!-- ── Grid: Tabs + Notifications ────────────────── -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+            <!-- Tabs -->
+            <section class="bg-white rounded-xl border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Tabs</h2>
+                    <span class="text-xs text-gray-400">Content swap</span>
+                </div>
+                <div id="tab-buttons" class="flex gap-1 bg-gray-50 p-1 rounded-lg">
+                    <form hx-post="{% url 'moduloreactor:action_tab' %}" hx-swap="none" class="contents">
+                        {% csrf_token %}
+                        <input type="hidden" name="tab" value="overview">
+                        <button type="submit" class="px-4 py-1.5 text-sm font-medium rounded-md transition bg-indigo-600 text-white shadow-sm">Overview</button>
+                    </form>
+                    <form hx-post="{% url 'moduloreactor:action_tab' %}" hx-swap="none" class="contents">
+                        {% csrf_token %}
+                        <input type="hidden" name="tab" value="events">
+                        <button type="submit" class="px-4 py-1.5 text-sm font-medium rounded-md transition text-gray-600 hover:bg-gray-100">Events</button>
+                    </form>
+                    <form hx-post="{% url 'moduloreactor:action_tab' %}" hx-swap="none" class="contents">
+                        {% csrf_token %}
+                        <input type="hidden" name="tab" value="api">
+                        <button type="submit" class="px-4 py-1.5 text-sm font-medium rounded-md transition text-gray-600 hover:bg-gray-100">Api</button>
+                    </form>
+                </div>
+                <div id="tab-content" class="text-sm text-gray-600 leading-relaxed p-4">
+                    {{ tab_content|safe }}
+                </div>
+            </section>
+
+            <!-- Notifications -->
+            <section class="bg-white rounded-xl border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Notifications</h2>
+                    <span class="text-xs text-gray-400">Toast & Alert</span>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-2">Toast</label>
+                        <form hx-post="{% url 'moduloreactor:action_toast' %}" hx-swap="none" class="flex gap-2">
+                            {% csrf_token %}
+                            <input type="text" name="message" value="Hello!" placeholder="Message…"
+                                class="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                            <select name="level" class="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500">
+                                <option value="info">info</option>
+                                <option value="success">success</option>
+                                <option value="warning">warning</option>
+                                <option value="error">error</option>
+                            </select>
+                            <button type="submit" class="bg-gray-800 text-white text-sm px-3 py-1.5 rounded-md hover:bg-gray-900 transition">Send</button>
+                        </form>
+                    </div>
+
+                    <hr class="border-gray-100">
+
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-2">Alert</label>
+                        <form hx-post="{% url 'moduloreactor:action_alert' %}" hx-swap="none" class="flex gap-2">
+                            {% csrf_token %}
+                            <input type="text" name="message" value="Heads up!" placeholder="Message…"
+                                class="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                            <select name="level" class="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500">
+                                <option value="info">info</option>
+                                <option value="success">success</option>
+                                <option value="warning">warning</option>
+                                <option value="error">error</option>
+                            </select>
+                            <button type="submit" class="bg-gray-800 text-white text-sm px-3 py-1.5 rounded-md hover:bg-gray-900 transition">Send</button>
+                        </form>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ── Bulk Actions ──────────────────────────────── -->
+        <section class="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+                <div>
+                    <h2 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Bulk Events</h2>
+                    <p class="text-xs text-gray-400 mt-0.5">Multiple events from a single <code class="bg-gray-100 px-1 rounded">@htmx_action</code></p>
+                </div>
+                <form hx-post="{% url 'moduloreactor:action_bulk' %}" hx-swap="none">
+                    {% csrf_token %}
+                    <button type="submit" class="bg-indigo-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium">Fire 3 events</button>
+                </form>
+            </div>
+            <div id="bulk-result" class="text-sm text-gray-400 bg-gray-50 rounded-md p-3 border border-gray-100">
+                Click the button to fire 2 toasts + 1 alert + 1 DOM update in one request.
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ── Footer ─────────────────────────────────────────── -->
+    <footer class="border-t border-gray-200 bg-white mt-auto">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between text-xs text-gray-400">
+            <span>moduloreactor · <code>{% templatetag openblock %} load moduloreactor {% templatetag closeblock %}</code> · <code>{% templatetag openblock %} frontboil {% templatetag closeblock %}</code></span>
+            <span>Django + HTMX · No build step</span>
+        </div>
+    </footer>
+
+    {% frontboil %}
+</body>
+</html>
